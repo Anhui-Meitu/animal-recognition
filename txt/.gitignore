@@ -1,0 +1,10 @@
+# Ignore all files in this directory
+*
+
+# Except tex and bib files and subdirectories
+!*.tex
+!*.bib
+!*/
+!.gitignore
+
+*wordcount*
