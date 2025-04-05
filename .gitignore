@@ -1,3 +1,3 @@
-*.pt
-*.ttf
-runs/
+/exp
+/model
+/data
