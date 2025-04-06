@@ -11,6 +11,7 @@ import argparse
 
 import torch
 from ultralytics import YOLO
+import detectron2
 
 model = YOLO("yolo11l.pt")
 model.train(

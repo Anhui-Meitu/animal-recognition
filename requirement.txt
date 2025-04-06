@@ -1,3 +1,5 @@
 torch
 torchvision
 ultralytics
+imagesize
+opencv-python
