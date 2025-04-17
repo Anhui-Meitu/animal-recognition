@@ -13,12 +13,14 @@ import torch
 from ultralytics import YOLO
 import detectron2
 
-model = YOLO("yolo11l.pt")
-model.train(
-    data = '/mnt/e/wfs-dataset/data.yaml',
-    epochs = 200,
-    imgsz = 736,
-    batch = 16,
-    device = 0,
-    save_dir = '/mnt/e/wfs-dataset/weights',
-)
+
+def train_yolo(config_fname: str, model: str):
+    model = YOLO("yolo11l.pt")
+    model.train(
+        data = '/mnt/e/wfs-dataset/data.yaml',
+        epochs = 200,
+        imgsz = 736,
+        batch = 16,
+        device = 0,
+        save_dir = '/mnt/e/wfs-dataset/weights',
+    )
