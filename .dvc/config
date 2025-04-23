@@ -2,4 +2,5 @@
     autostage = true
     remote = myremote
 ['remote "myremote"']
-    url = /media/peiheng/DVC
+    url = /Volumes/DVC
+    # url = /media/peiheng/DVC
