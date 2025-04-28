@@ -13,6 +13,16 @@ def is_infrared(image_path):
     """
     # Read the image
     image = cv2.imread(image_path)
+    
+    # crop out the centre patch of the image
+    h, w = image.shape[:2]
+    center_x, center_y = w // 2, h // 2
+    crop_size = min(h, w) // 2
+    crop_x1 = center_x - crop_size // 2
+    crop_x2 = center_x + crop_size // 2
+    crop_y1 = center_y - crop_size // 2
+    crop_y2 = center_y + crop_size // 2
+    image = image[crop_y1:crop_y2, crop_x1:crop_x2]
 
     # Check if the image is grayscale (single channel)
     if len(image.shape) == 2 or image.shape[2] == 1:
