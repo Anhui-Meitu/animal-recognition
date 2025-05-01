@@ -58,4 +58,4 @@ def extract_frames(video_path, output_dir, fps=1):
 
 
 # 示例调用
-extract_frames("F:/ahs.MP4", "C:/Users/LL/Desktop/pic/3")
+# extract_frames("F:/ahs.MP4", "C:/Users/LL/Desktop/pic/3")

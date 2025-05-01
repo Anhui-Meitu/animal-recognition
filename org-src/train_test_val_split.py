@@ -53,5 +53,5 @@ def split_files(source_dir):
     # print(f"- {len(test_files)} 个文件移动到 {test_dir}")
 
 # 示例使用
-split_files("E:\PycharmProjects\pythonProject\dataset/animal\images/train_hard_yz")
-split_files("E:\PycharmProjects\pythonProject\dataset/animal\labels/train_hard_yz")
+# split_files("E:\PycharmProjects\pythonProject\dataset/animal\images/train_hard_yz")
+# split_files("E:\PycharmProjects\pythonProject\dataset/animal\labels/train_hard_yz")
