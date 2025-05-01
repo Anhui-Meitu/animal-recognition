@@ -32,6 +32,10 @@ def is_infrared(image_path):
     b, g, r = cv2.split(image)
     if (b == g).all() and (g == r).all():
         return True
+    
+    # close the image to prevent memory leak
+    cv2.destroyAllWindows()
+    image = None
 
     return False
     
