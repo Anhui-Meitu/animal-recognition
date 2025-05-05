@@ -17,13 +17,16 @@ import detectron2
 from constants import MODEL_DIR, DATA_DIR, EXPERIMENT_DIR
 
 
-def train_yolo(config_fpath: str, model: str, patience: int = 10, save_dir: str = "exp/yolo_train"):
+def train_yolo(
+    config_fpath: str, model: str, patience: int = 10, 
+    save_dir: str = pjoin(EXPERIMENT_DIR, "yolo_train")
+    ):
     model = YOLO(model)
     model.train(
         data = config_fpath,
         epochs = 200,
         imgsz = 736,
-        batch = 8,
+        batch = 12,
         device = 0,
         patience = patience,
         project = save_dir,
@@ -42,7 +45,7 @@ def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
         data = config_fpath,
         epochs = 200,
         imgsz = 736,
-        batch = 8,
+        batch = 12,
         device = 0,
         resume=True,
         # patience=patience,
