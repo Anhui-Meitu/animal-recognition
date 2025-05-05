@@ -6,6 +6,7 @@ Designed to run from the command line.
 """
 
 import os
+from os.path import join as pjoin
 import sys
 import argparse
 
@@ -13,14 +14,76 @@ import torch
 from ultralytics import YOLO
 import detectron2
 
+from constants import MODEL_DIR, DATA_DIR, EXPERIMENT_DIR
 
-def train_yolo(config_fname: str, model: str):
-    model = YOLO("yolo11l.pt")
+
+def train_yolo(config_fpath: str, model: str, patience: int = 10, save_dir: str = "exp/yolo_train"):
+    model = YOLO(model)
     model.train(
-        data = '/mnt/e/wfs-dataset/data.yaml',
+        data = config_fpath,
         epochs = 200,
         imgsz = 736,
-        batch = 16,
+        batch = 8,
         device = 0,
-        save_dir = '/mnt/e/wfs-dataset/weights',
+        patience = patience,
+        project = save_dir,
     )
+    
+def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
+    """
+    Train a YOLO model with the specified configuration file and model path.
+    Args:
+        config_fpath (str): Path to the configuration file.
+        model (str): Path to the model file.
+        early_stopping (bool): Whether to use early stopping. Default is False.
+    """
+    model = YOLO(model)
+    model.train(
+        data = config_fpath,
+        epochs = 200,
+        imgsz = 736,
+        batch = 8,
+        device = 0,
+        resume=True,
+        # patience=patience,
+    )
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a YOLO model.")
+    parser.add_argument(
+        "-c", "--config", type=str, required=True, help="Path to the config file."
+    )
+    parser.add_argument(
+        "-m", "--model", type=str, required=True, help="Path to the model file."
+    )
+    parser.add_argument(
+        "-r", "--resume", action="store_true", help="Resume training from the last checkpoint."
+    )
+    args = parser.parse_args()
+    
+    config_path = pjoin(DATA_DIR, args.config)
+    
+    if args.resume:
+        # Check if the model file exists
+        model_path = pjoin(EXPERIMENT_DIR, args.model, 'weights', 'last.pt')
+        if not os.path.exists(model_path):
+            print(f"Model file {args.model} does not exist.")
+            sys.exit(1)
+        print("Resuming training...")
+        train_yolo_resume(config_fpath=config_path, model=model_path)
+        exit(0)
+
+    model_path = pjoin(MODEL_DIR, args.model)
+
+    # Check if the config file exists
+    if not os.path.exists(config_path):
+        print(f"Config file {args.config} does not exist.")
+        sys.exit(1)
+
+    # Check if the model file exists
+    if not os.path.exists(model_path):
+        print(f"Model file {args.model} does not exist.")
+        sys.exit(1)
+    if 'yolo' in model_path:
+        print("Training YOLO model...")
+        train_yolo(config_fpath=config_path, model=model_path)
