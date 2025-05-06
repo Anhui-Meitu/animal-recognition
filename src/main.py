@@ -19,6 +19,19 @@ from collections import defaultdict
 from PIL import Image, ImageDraw
 from ultralytics.engine.results import Boxes
 import subprocess
+import tracemalloc  # Import tracemalloc for memory profiling
+
+
+# Start memory tracking
+tracemalloc.start()
+
+# Function to display memory usage
+def display_memory_usage(snapshot_label: str):
+    snapshot = tracemalloc.take_snapshot()
+    top_stats = snapshot.statistics('lineno')
+    print(f"[Memory Snapshot: {snapshot_label}] Top 10 memory usage:")
+    for stat in top_stats[:10]:
+        print(stat)
 
 
 class YoloInfo(BaseModel):
@@ -48,12 +61,15 @@ model2 = YOLO("fuhe.pt")
 
 @app.get("/fileRecognize", response_model=PicInfo)
 async def fileRecognize(filePath: str):
+    display_memory_usage("Before fileRecognize")  # Memory snapshot
     picInfo = predict_img(filePath)
+    display_memory_usage("After fileRecognize")  # Memory snapshot
     return picInfo
 
 
 @app.get("/dirRecognize")
 async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: str):
+    display_memory_usage("Before dirRecognize")  # Memory snapshot
     # 检查 modelName 是否不为空
     global model  # 声明使用全局变量
     if modelName:
@@ -85,6 +101,8 @@ async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: s
     except Exception as err:
         call_java_interface_for_error_handling(taskId)
         raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        display_memory_usage("After dirRecognize")  # Memory snapshot
 
 
 def voice_recognize(folder_path, task_id):
@@ -150,6 +168,7 @@ def voice_recognize(folder_path, task_id):
 
 @app.get("/voiceDirRecognize")
 async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
+    display_memory_usage("Before voiceDirRecognize")  # Memory snapshot
     print(dirPath)
 
     list1 = voice_recognize(dirPath, taskId)
@@ -175,23 +194,29 @@ async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
     except Exception as err:
         call_voice_update_state(taskId)
         raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        display_memory_usage("After voiceDirRecognize")  # Memory snapshot
 
 
 @app.get("/videoRecognize")
 async def videoRecognize(videoPath: str):
+    display_memory_usage("Before videoRecognize")  # Memory snapshot
     input_line2(videoPath)
+    display_memory_usage("After videoRecognize")  # Memory snapshot
     return {"message": videoPath}
 
 
 @app.get("/streamRecognize")
 async def streamRecognize(streamPath: str):
+    display_memory_usage("Before streamRecognize")  # Memory snapshot
     stream_rec(streamPath)
+    display_memory_usage("After streamRecognize")  # Memory snapshot
     return {"message": streamPath}
 
 
 @app.get("/fileCount")
 async def fileCount(filePath: str):
-    # 得到文件后缀名  需要根据情况进行修改
+    # 得到文件后缀名 需要根据情况进行修改
     suffix = filePath.split("/")[-1][filePath.split("/")[-1].index(".") + 1:]
     count_num = 0
     if suffix.lower() in ['png', 'jpg', 'jpeg']:
