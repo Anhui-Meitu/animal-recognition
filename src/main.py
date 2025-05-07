@@ -10,7 +10,7 @@ import cv2
 import os
 from ultralytics import YOLO
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel # for data validation and conversions
 import requests
 import json
 import ffmpeg
