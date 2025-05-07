@@ -9,6 +9,16 @@ import os
 from os.path import join as pjoin
 import sys
 import argparse
+import matplotlib.pyplot as plt
+
+# if on linux system:    
+if sys.platform.startswith("win"):
+    # Set the font to a Chinese font
+    plt.rcParams["font.family"] = "SimHei"
+else: # linux or mac
+    # Set the font to a Chinese font
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei"]
 
 import torch
 from ultralytics import YOLO
@@ -17,21 +27,25 @@ import detectron2
 from constants import MODEL_DIR, DATA_DIR, EXPERIMENT_DIR
 
 
-def train_yolo(
-    config_fpath: str, model: str, patience: int = 10, 
-    save_dir: str = pjoin(EXPERIMENT_DIR, "yolo_train")
-    ):
-    model = YOLO(model)
-    model.train(
-        data = config_fpath,
-        epochs = 200,
-        imgsz = 736,
-        batch = 12,
-        device = 0,
-        patience = patience,
-        project = save_dir,
+def train_yolo(config_fpath: str, model: str, patience: int = 20):
+    save_dir: str = pjoin(
+        EXPERIMENT_DIR,
+        os.path.basename(config_fpath).split(".")[0],
+        os.path.basename(model).split(".")[0],
     )
-    
+    model = YOLO(model)  # Load a pretrained YOLOv8 model
+    model.train(
+        data=config_fpath,
+        epochs=200,
+        imgsz=736,
+        batch=12,
+        device=0,
+        
+        patience=patience,
+        project=save_dir,
+    )
+
+
 def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
     """
     Train a YOLO model with the specified configuration file and model path.
@@ -42,15 +56,16 @@ def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
     """
     model = YOLO(model)
     model.train(
-        data = config_fpath,
-        epochs = 200,
-        imgsz = 736,
-        batch = 12,
-        device = 0,
+        data=config_fpath,
+        epochs=200,
+        imgsz=736,
+        batch=12,
+        device=0,
         resume=True,
         # patience=patience,
     )
-    
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a YOLO model.")
     parser.add_argument(
@@ -60,17 +75,21 @@ if __name__ == "__main__":
         "-m", "--model", type=str, required=True, help="Path to the model file."
     )
     parser.add_argument(
-        "-r", "--resume", action="store_true", help="Resume training from the last checkpoint."
+        "-r",
+        "--resume",
+        action="store_true",
+        help="Resume training from the last checkmapoint.",
     )
     args = parser.parse_args()
     
+
     config_path = pjoin(DATA_DIR, args.config)
-    
+
     if args.resume:
         # Check if the model file exists
-        model_path = pjoin(EXPERIMENT_DIR, args.model, 'weights', 'last.pt')
+        model_path = pjoin(EXPERIMENT_DIR, args.model, "weights", "last.pt")
         if not os.path.exists(model_path):
-            print(f"Model file {args.model} does not exist.")
+            print(f"Model file {model_path} does not exist.")
             sys.exit(1)
         print("Resuming training...")
         train_yolo_resume(config_fpath=config_path, model=model_path)
@@ -87,6 +106,6 @@ if __name__ == "__main__":
     if not os.path.exists(model_path):
         print(f"Model file {args.model} does not exist.")
         sys.exit(1)
-    if 'yolo' in model_path:
+    if "yolo" in model_path:
         print("Training YOLO model...")
         train_yolo(config_fpath=config_path, model=model_path)

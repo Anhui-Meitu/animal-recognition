@@ -6,11 +6,12 @@ A number of common species of target animals:
 
 - [ ] 白冠长尾雉 Reeves's pheasant
 - [ ] 野猪 Wild boar
-- [ ] 
+- [ ] 小麂/山羌 Reeves's muntjac 
+- [ ] 猪獾 Greater hog badger 
 
 ## Models
 
-### YoloV8
+### YoloV8/V11
 
 Installation:
 ```bash
