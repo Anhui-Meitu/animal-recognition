@@ -19,6 +19,19 @@ from collections import defaultdict
 from PIL import Image, ImageDraw
 from ultralytics.engine.results import Boxes
 import subprocess
+import tracemalloc  # Import tracemalloc for memory profiling
+
+
+# Start memory tracking
+tracemalloc.start()
+
+# Function to display memory usage
+def display_memory_usage(snapshot_label: str):
+    snapshot = tracemalloc.take_snapshot()
+    top_stats = snapshot.statistics('lineno')
+    print(f"[Memory Snapshot: {snapshot_label}] Top 10 memory usage:")
+    for stat in top_stats[:10]:
+        print(stat)
 
 
 class YoloInfo(BaseModel):
@@ -48,12 +61,19 @@ model2 = YOLO("fuhe.pt")
 
 @app.get("/fileRecognize", response_model=PicInfo)
 async def fileRecognize(filePath: str):
-    picInfo = predict_img(filePath)
+    try:
+        display_memory_usage("Before fileRecognize")  # Memory snapshot
+        picInfo = predict_img(filePath)
+        display_memory_usage("After fileRecognize")  # Memory snapshot
+    finally:
+        torch.cuda.empty_cache()
+        cv2.destroyAllWindows()
     return picInfo
 
 
 @app.get("/dirRecognize")
 async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: str):
+    display_memory_usage("Before dirRecognize")  # Memory snapshot
     # 检查 modelName 是否不为空
     global model  # 声明使用全局变量
     if modelName:
@@ -85,6 +105,11 @@ async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: s
     except Exception as err:
         call_java_interface_for_error_handling(taskId)
         raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        display_memory_usage("After dirRecognize")  # Memory snapshot
+        torch.cuda.empty_cache()  # Clear unused GPU memory
+        cv2.destroyAllWindows()  # Release OpenCV resources
+
 
 
 def voice_recognize(folder_path, task_id):
@@ -144,12 +169,15 @@ def voice_recognize(folder_path, task_id):
                         'error': f"发生未知错误: {e}"
                     }
                     results.append(result)
+                finally:
+                    torch.cuda.empty_cache()  # 清除未使用的 GPU 内存
 
     return results
 
 
 @app.get("/voiceDirRecognize")
 async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
+    display_memory_usage("Before voiceDirRecognize")  # Memory snapshot
     print(dirPath)
 
     list1 = voice_recognize(dirPath, taskId)
@@ -175,23 +203,44 @@ async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
     except Exception as err:
         call_voice_update_state(taskId)
         raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        display_memory_usage("After voiceDirRecognize")  # Memory snapshot
+        torch.cuda.empty_cache()  # Clear unused GPU memory
 
 
 @app.get("/videoRecognize")
 async def videoRecognize(videoPath: str):
-    input_line2(videoPath)
+    try:
+        display_memory_usage("Before videoRecognize")  # Memory snapshot
+        input_line2(videoPath)
+        display_memory_usage("After videoRecognize")  # Memory snapshot
+    except Exception as e:
+        print(f"Error processing video {videoPath}: {e}")
+    finally:
+        torch.cuda.empty_cache()
+        cv2.destroyAllWindows()
     return {"message": videoPath}
 
 
 @app.get("/streamRecognize")
 async def streamRecognize(streamPath: str):
-    stream_rec(streamPath)
+    try:
+        display_memory_usage("Before streamRecognize")  # Memory snapshot
+        stream_rec(streamPath)
+        display_memory_usage("After streamRecognize")  # Memory snapshot
+    except Exception as e:
+        print(f"Error processing stream {streamPath}: {e}")
+    finally:
+        torch.cuda.empty_cache()
+        cv2.destroyAllWindows()
+        # destroy ffmpeg process if needed
+        # subprocess.run(['pkill', '-f', 'ffmpeg'])
     return {"message": streamPath}
 
 
 @app.get("/fileCount")
 async def fileCount(filePath: str):
-    # 得到文件后缀名  需要根据情况进行修改
+    # 得到文件后缀名 需要根据情况进行修改
     suffix = filePath.split("/")[-1][filePath.split("/")[-1].index(".") + 1:]
     count_num = 0
     if suffix.lower() in ['png', 'jpg', 'jpeg']:
@@ -225,104 +274,107 @@ def updateRecName(filePath, updateName):
     os.makedirs(output_cover_dir, exist_ok=True)
 
     # 初始化视频流
-    cap = cv2.VideoCapture(filePath)
-    orig_fps = cap.get(cv2.CAP_PROP_FPS)
-    # 确保分辨率为偶数
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    try:
+        cap = cv2.VideoCapture(filePath)
+        orig_fps = cap.get(cv2.CAP_PROP_FPS)
+        # 确保分辨率为偶数
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # 修改FFmpeg命令（显式指定输入/输出格式）
-    video_path = os.path.join(output_video_dir, f'{file_name}.mp4')
-    if os.path.exists(video_path):
-        try:
-            os.remove(video_path)
-            print(f"视频文件 {video_path} 已成功删除。")
-        except Exception as e:
-            print(f"删除视频文件 {video_path} 时出错: {e}")
+        # 修改FFmpeg命令（显式指定输入/输出格式）
+        video_path = os.path.join(output_video_dir, f'{file_name}.mp4')
+        if os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+                print(f"视频文件 {video_path} 已成功删除。")
+            except Exception as e:
+                print(f"删除视频文件 {video_path} 时出错: {e}")
 
-    video_pic_path = os.path.join(output_cover_dir, f'{file_name}.jpg')
-    # 修正后的FFmpeg参数（移除冲突的r=orig_fps）
-    # FFmpeg 输出流
-    process = (
-        ffmpeg
-        .input('pipe:0', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}', framerate=orig_fps)
-        .output(video_path, pix_fmt='yuv420p', vcodec='libx264')
-        .run_async(pipe_stdin=True)
-    )
+        video_pic_path = os.path.join(output_cover_dir, f'{file_name}.jpg')
+        # 修正后的FFmpeg参数（移除冲突的r=orig_fps）
+        # FFmpeg 输出流
+        process = (
+            ffmpeg
+            .input('pipe:0', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}', framerate=orig_fps)
+            .output(video_path, pix_fmt='yuv420p', vcodec='libx264')
+            .run_async(pipe_stdin=True)
+        )
 
-    # 获取中文类别到ID的映射
-    def get_class_id(name: str) -> int:
-        for idx, cn_name in enumerate(model2.names.values()):
-            if cn_name == name:
-                print(cn_name)
-                return idx
-        raise ValueError(f"类别 '{name}' 不存在于模型")
+        # 获取中文类别到ID的映射
+        def get_class_id(name: str) -> int:
+            for idx, cn_name in enumerate(model2.names.values()):
+                if cn_name == name:
+                    print(cn_name)
+                    return idx
+            raise ValueError(f"类别 '{name}' 不存在于模型")
 
-    target_class_id = get_class_id(updateName)
-    no_continuous_frame = 0
+        target_class_id = get_class_id(updateName)
+        no_continuous_frame = 0
 
-    cover_flag = False
+        cover_flag = False
 
-    while cap.isOpened():
-        success, frame = cap.read()
-        if not success:
-            break
+        while cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                break
 
-            # 调整帧大小至偶数
-        frame = cv2.resize(frame, (width, height))
+                # 调整帧大小至偶数
+            frame = cv2.resize(frame, (width, height))
 
-        if not cover_flag:
-            # 先保存第一帧 后面如果识别到物种再替换
-            cv2.imwrite(video_pic_path, frame)
+            if not cover_flag:
+                # 先保存第一帧 后面如果识别到物种再替换
+                cv2.imwrite(video_pic_path, frame)
 
-        # 对帧运行 YOLOv8 推理
-        results = model(frame, conf=0.3, imgsz=736)
-        results1 = model2(frame, conf=0.3, imgsz=736)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
+            # 对帧运行 YOLO 推理
+            results = model(frame, conf=0.3, imgsz=736)
+            results1 = model2(frame, conf=0.3, imgsz=736)
 
-        # 获取 model 识别的边界框信息
-        xyxy_model = results[0].boxes.xyxy
-        conf_model = results[0].boxes.conf
+            # 获取 model 识别的边界框信息
+            xyxy_model = results[0].boxes.xyxy
+            conf_model = results[0].boxes.conf
 
-        # 如果 model2 没有识别出目标，使用默认的 classid
-        new_cls = torch.tensor([target_class_id] * xyxy_model.shape[0]).to(xyxy_model.device)
+            # 如果 model2 没有识别出目标，使用默认的 classid
+            new_cls = torch.tensor([target_class_id] * xyxy_model.shape[0]).to(xyxy_model.device)
 
-        conf_model = conf_model.unsqueeze(1)
-        new_cls = new_cls.unsqueeze(1)
+            conf_model = conf_model.unsqueeze(1)
+            new_cls = new_cls.unsqueeze(1)
 
-        # 拼接新的边界框数据
-        new_boxes_data = torch.cat([xyxy_model, conf_model, new_cls], dim=1)
-        orig_shape = results[0].boxes.orig_shape
+            # 拼接新的边界框数据
+            new_boxes_data = torch.cat([xyxy_model, conf_model, new_cls], dim=1)
+            orig_shape = results[0].boxes.orig_shape
 
-        # 创建全新的 Boxes 对象
-        new_boxes = Boxes(new_boxes_data, orig_shape=orig_shape)
+            # 创建全新的 Boxes 对象
+            new_boxes = Boxes(new_boxes_data, orig_shape=orig_shape)
 
-        # 创建一个新的空结果对象，避免混入 model2 原本的框
-        from copy import deepcopy
-        new_result = deepcopy(results1[0])
-        new_result.boxes = new_boxes
+            # 创建一个新的空结果对象，避免混入 model2 原本的框
+            from copy import deepcopy
+            new_result = deepcopy(results1[0])
+            new_result.boxes = new_boxes
 
-        # 绘制标注框
-        annotated_frame = new_result.plot()
+            # 绘制标注框
+            annotated_frame = new_result.plot()
 
-        if not cover_flag:
-            # 保存第一帧识别图片做封面
-            cv2.imwrite(video_pic_path, annotated_frame)
-            cover_flag = True
+            if not cover_flag:
+                # 保存第一帧识别图片做封面
+                cv2.imwrite(video_pic_path, annotated_frame)
+                cover_flag = True
 
-        if annotated_frame is not None:
-            # 写入视频帧
-            if process.poll() is None:  # FFmpeg 进程仍在运行
-                process.stdin.write(annotated_frame.astype(np.uint8).tobytes())
-            else:
-                print("FFmpeg进程不存在")
+            if annotated_frame is not None:
+                # 写入视频帧
+                if process.poll() is None:  # FFmpeg 进程仍在运行
+                    process.stdin.write(annotated_frame.astype(np.uint8).tobytes())
+                else:
+                    print("FFmpeg进程不存在")
 
-    compress_image(video_pic_path, video_pic_path)
-    # 释放资源
-    cap.release()
-    if process:
-        process.stdin.close()
-        process.wait()
+        compress_image(video_pic_path, video_pic_path)
+    except Exception as e:
+        print(f"处理视频 {filePath} 时出错: {e}")
+    finally:
+        # 释放资源
+        cap.release()
+        if process:
+            process.stdin.close()
+            process.wait()
 
     return video_path
 
@@ -338,13 +390,15 @@ def compress_image(input_path, output_path, quality=50):
         print(f"错误：未找到文件 {input_path}")
     except Exception as e:
         print(f"发生未知错误：{e}")
+    finally:
+        # 释放资源
+        img.close() if 'img' in locals() else None
 
 
 def img_count(filePath):
     im2 = cv2.imread(filePath)
     # 进行预测
     results = model1.predict(source=im2, conf=0.3)
-    torch.cuda.empty_cache()  # Clear unused GPU memory
     class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
     count_num = class_ids.size()
     return count_num
@@ -352,144 +406,151 @@ def img_count(filePath):
 
 def video_count(filePath):
     total_detected = 0
-    cap = cv2.VideoCapture(filePath)
-    frame_width, frame_height = int(cap.get(3)), int(cap.get(4))
-    fps = int(cap.get(5))
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    # 使用os.path.dirname获取文件所在的目录
-    dir_path = os.path.dirname(filePath)
-    # 使用os.path.basename获取文件名
-    file_name = os.path.basename(filePath)
-    # 替换文件名
-    new_file_name = file_name.replace(".mp4", "_rec.mp4") if ".mp4" in file_name else file_name + "_rec.mp4"
-    # 重新拼接路径
-    new_path = os.path.join(dir_path, new_file_name)
-    video_writer = cv2.VideoWriter(new_path, fourcc, fps, (frame_width, frame_height))
+    try:
+        cap = cv2.VideoCapture(filePath)
+        frame_width, frame_height = int(cap.get(3)), int(cap.get(4))
+        fps = int(cap.get(5))
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # 使用os.path.dirname获取文件所在的目录
+        dir_path = os.path.dirname(filePath)
+        # 使用os.path.basename获取文件名
+        file_name = os.path.basename(filePath)
+        # 替换文件名
+        new_file_name = file_name.replace(".mp4", "_rec.mp4") if ".mp4" in file_name else file_name + "_rec.mp4"
+        # 重新拼接路径
+        new_path = os.path.join(dir_path, new_file_name)
+        video_writer = cv2.VideoWriter(new_path, fourcc, fps, (frame_width, frame_height))
 
-    track_history = {}
-    seen_ids = set()
-    track_id = 0
+        track_history = {}
+        seen_ids = set()
+        track_id = 0
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        results = model1(frame)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
-        boxes = results[0].boxes
+            results = model1(frame)
+            boxes = results[0].boxes
 
-        new_track_history = {}
+            new_track_history = {}
 
-        if boxes is not None:
-            boxes = boxes.xyxy.cpu().numpy()
-            for box in boxes:
-                x1, y1, x2, y2 = map(int, box[:4])
-                bbox_center = ((x1 + x2) // 2, (y1 + y2) // 2)
+            if boxes is not None:
+                boxes = boxes.xyxy.cpu().numpy()
+                for box in boxes:
+                    x1, y1, x2, y2 = map(int, box[:4])
+                    bbox_center = ((x1 + x2) // 2, (y1 + y2) // 2)
 
-                # Find the closest existing ID or create a new one
-                min_distance = float('inf')
-                min_id = None
-                for tid, center in track_history.items():
-                    distance = np.linalg.norm(np.array(bbox_center) - np.array(center))
-                    if distance < min_distance:
-                        min_distance = distance
-                        min_id = tid
+                    # Find the closest existing ID or create a new one
+                    min_distance = float('inf')
+                    min_id = None
+                    for tid, center in track_history.items():
+                        distance = np.linalg.norm(np.array(bbox_center) - np.array(center))
+                        if distance < min_distance:
+                            min_distance = distance
+                            min_id = tid
 
-                if min_distance < 50:  # Threshold to assign the ID to the closest existing box
-                    new_track_history[min_id] = bbox_center
-                    current_id = min_id
-                else:
-                    new_track_history[track_id] = bbox_center
-                    current_id = track_id
-                    track_id += 1
+                    if min_distance < 50:  # Threshold to assign the ID to the closest existing box
+                        new_track_history[min_id] = bbox_center
+                        current_id = min_id
+                    else:
+                        new_track_history[track_id] = bbox_center
+                        current_id = track_id
+                        track_id += 1
 
-                # If current ID is new, add it to seen_ids and increment the total count
-                if current_id not in seen_ids:
-                    seen_ids.add(current_id)
-                    total_detected += 1
+                    # If current ID is new, add it to seen_ids and increment the total count
+                    if current_id not in seen_ids:
+                        seen_ids.add(current_id)
+                        total_detected += 1
 
-                # Draw bounding box and ID
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.circle(frame, bbox_center, 2, (0, 0, 255), -1)
-                cv2.putText(frame, f'ID: {current_id}',
-                            (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    # Draw bounding box and ID
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.circle(frame, bbox_center, 2, (0, 0, 255), -1)
+                    cv2.putText(frame, f'ID: {current_id}',
+                                (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # Update the track history with the new IDs for the next frame
-        track_history = new_track_history
+            # Update the track history with the new IDs for the next frame
+            track_history = new_track_history
 
-        # Show total detected objects in the left upper corner
-        cv2.putText(frame, f'Total Detected: {total_detected}',
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            # Show total detected objects in the left upper corner
+            cv2.putText(frame, f'Total Detected: {total_detected}',
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-        video_writer.write(frame)
-
-    cap.release()
-    video_writer.release()
-    cv2.destroyAllWindows()
+            video_writer.write(frame)
+    except Exception as e:
+        print(f"Error processing video {filePath}: {e}")
+    finally:
+        cap.release()
+        if 'video_writer' in locals():
+            video_writer.release()
+        cv2.destroyAllWindows()
     return total_detected
 
 
 def stream_rec(streamPath):
-    cap = cv2.VideoCapture(streamPath)
-    # 存储视频路径
-    video_path = '/data/video'
-    if not os.path.exists(video_path):
-        os.makedirs(video_path)
-    # video_path = os.path.join(video_path, fileName + '.mp4')
+    try:
+        cap = cv2.VideoCapture(streamPath)
+        # 存储视频路径
+        video_path = '/data/video'
+        if not os.path.exists(video_path):
+            os.makedirs(video_path)
+        # video_path = os.path.join(video_path, fileName + '.mp4')
 
-    if not cap.isOpened():
-        print("Error: Could not open video stream.")
-        return
+        if not cap.isOpened():
+            print("Error: Could not open video stream.")
+            return
 
-    out = None
-    recording = False
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+        out = None
+        recording = False
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
 
-    while True:
-        # Capture frame-by-frame
-        ret, frame = cap.read()
+        while True:
+            # Capture frame-by-frame
+            ret, frame = cap.read()
 
-        if not ret:
-            print("Error: Could not read frame.")
-            break
+            if not ret:
+                print("Error: Could not read frame.")
+                break
 
-        # Perform YOLO detection
-        results = model(frame)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
-        result = results[0]
+            # Perform YOLO detection
+            results = model(frame)
+            result = results[0]
 
-        # Check if any objects are detected
-        if len(result) > 0:
-            annotated_frame = result.plot()
+            # Check if any objects are detected
+            if len(result) > 0:
+                annotated_frame = result.plot()
 
-            if not recording:
-                # Start a new video file
-                video_filename = os.path.join('/data/video', f'detected_{int(time.time())}.mp4')
-                out = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'xmp4'), frame_rate,
-                                      (frame_width, frame_height))
-                recording = True
-                print(f"Recording started: {video_filename}")
+                if not recording:
+                    # Start a new video file
+                    video_filename = os.path.join('/data/video', f'detected_{int(time.time())}.mp4')
+                    out = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'xmp4'), frame_rate,
+                                        (frame_width, frame_height))
+                    recording = True
+                    print(f"Recording started: {video_filename}")
 
-            # Write the frame to the video file
-            out.write(annotated_frame)
+                # Write the frame to the video file
+                out.write(annotated_frame)
 
-            # Display the frame with detections
-            cv2.imshow('YOLO Stream Detection', annotated_frame)
+                # Display the frame with detections
+                cv2.imshow('YOLO Stream Detection', annotated_frame)
+            else:
+                if recording:
+                    # Stop recording
+                    recording = False
+                    out.release()
+                    print("Recording stopped and file saved.")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        cv2.destroyAllWindows()
+        cap.release()
+        if recording:
+            out.release()
+            print("Recording stopped and file saved.")
         else:
-            if recording:
-                # Stop recording
-                recording = False
-                out.release()
-                print("Recording stopped and file saved.")
-
-    # Release the capture and close the window
-    cap.release()
-    if recording:
-        out.release()
-    cv2.destroyAllWindows()
+            print("No objects detected, no video saved.")
 
 
 def input_line5(directory) -> List[PicInfo]:
@@ -511,73 +572,80 @@ def input_line5(directory) -> List[PicInfo]:
             if suffix.lower() in ['png', 'jpg', 'jpeg']:
                 filePath = os.path.join(root, file.replace("\\", "/"))
 
-                im2 = cv2.imread(filePath)
-                # 进行预测
-                results = model.predict(source=im2, conf=0.3)
+                try:
+                    im2 = cv2.imread(filePath)
+                    # 进行预测
+                    results = model.predict(source=im2, conf=0.3)
 
-                boxes = results[0].boxes.xyxy.tolist()
-                class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-                class_names = [model.names[int(cls)] for cls in class_ids]
-                confs = results[0].boxes.conf.cpu().numpy().astype(float).tolist()
-                
-                torch.cuda.empty_cache()  # Clear unused GPU memory
+                    boxes = results[0].boxes.xyxy.tolist()
+                    class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                    class_names = [model.names[int(cls)] for cls in class_ids]
+                    confs = results[0].boxes.conf.cpu().numpy().astype(float).tolist()
+                    
+                    # 获取带有标注的图片
+                    annotated_frame = results[0].plot()
 
-                # 获取带有标注的图片
-                annotated_frame = results[0].plot()
+                    # 根据是否有预测结果保存图片
+                    if len(results[0].boxes) > 0:
+                        output_folder = os.path.join(directory, 'label')
+                    else:
+                        output_folder = os.path.join(directory, 'no_label')
 
-                # 根据是否有预测结果保存图片
-                if len(results[0].boxes) > 0:
-                    output_folder = os.path.join(directory, 'label')
-                else:
-                    output_folder = os.path.join(directory, 'no_label')
+                    # 判断文件夹是否存在 不存在则创建
+                    if not os.path.exists(output_folder):
+                        os.makedirs(output_folder)
 
-                # 判断文件夹是否存在 不存在则创建
-                if not os.path.exists(output_folder):
-                    os.makedirs(output_folder)
+                    # 保存带有标注的图片
+                    output_image_file = os.path.join(output_folder, file)
+                    cv2.imwrite(output_image_file, annotated_frame)
 
-                # 保存带有标注的图片
-                output_image_file = os.path.join(output_folder, file)
-                cv2.imwrite(output_image_file, annotated_frame)
-
-                yolo_info = YoloInfo(classNames=class_names, boxes=boxes, confs=confs)
-                pic_info = PicInfo(
-                    picName=file,
-                    oriPicPath=filePath,
-                    firstPic='',
-                    recPicPath=output_image_file,
-                    yoloInfo=yolo_info
-                )
-                list_info.append(pic_info)
+                    yolo_info = YoloInfo(classNames=class_names, boxes=boxes, confs=confs)
+                    pic_info = PicInfo(
+                        picName=file,
+                        oriPicPath=filePath,
+                        firstPic='',
+                        recPicPath=output_image_file,
+                        yoloInfo=yolo_info
+                    )
+                    list_info.append(pic_info)
+                except Exception as e:
+                    print(f"Error processing image {filePath}: {e}")
+                finally:
+                    im2 = None
+                    cv2.destroyAllWindows()  # 释放资源
 
             elif suffix.lower() in ['mp4', 'avi', 'wmv', 'mpeg']:
                 filePath = os.path.join(root, file.replace("\\", "/"))
 
                 # 预测视频
-                cap = cv2.VideoCapture(filePath)
-                class_set = predict_video(directory, prefix, cap, confidence=0.6, continuous_frame_threshold=1)
+                try:    
+                    cap = cv2.VideoCapture(filePath)
+                    class_set = predict_video(directory, prefix, cap, confidence=0.6, continuous_frame_threshold=1)
 
-                # TODO: conversion needed? 需不需要转换格式
-                file = file.replace(suffix, "mp4")
+                    # TODO: conversion needed? 需不需要转换格式
+                    file = file.replace(suffix, "mp4")
 
-                # 构造路径
-                rec_pic_path = os.path.join(directory, 'label', file)
+                    # 构造路径
+                    rec_pic_path = os.path.join(directory, 'label', file)
 
-                if not class_set:
-                    recPicPath = ""
-                else:
-                    recPicPath = rec_pic_path
+                    if not class_set:
+                        recPicPath = ""
+                    else:
+                        recPicPath = rec_pic_path
 
-                yolo_info = YoloInfo(classNames=[] if not class_set else [class_set], boxes=[], confs=[])
-                pic_info = PicInfo(
-                    picName=file,
-                    oriPicPath=filePath,
-                    firstPic=os.path.join(directory, 'cover', prefix + '.jpg'),
-                    recPicPath=recPicPath,
-                    yoloInfo=yolo_info
-                )
-                list_info.append(pic_info)
-                
-                cap.release() # ensure resources are freed
+                    yolo_info = YoloInfo(classNames=[] if not class_set else [class_set], boxes=[], confs=[])
+                    pic_info = PicInfo(
+                        picName=file,
+                        oriPicPath=filePath,
+                        firstPic=os.path.join(directory, 'cover', prefix + '.jpg'),
+                        recPicPath=recPicPath,
+                        yoloInfo=yolo_info
+                    )
+                    list_info.append(pic_info)
+                except Exception as e:
+                    print(f"Error processing video {filePath}: {e}")
+                finally:
+                    cap.release() # ensure resources are freed
 
     return list_info
 
@@ -653,7 +721,12 @@ def input_line2(file_name):
         pass
     elif suffix.lower() in ['mp4', 'avi', 'wmv', 'mpeg']:
         cap = cv2.VideoCapture(file_name)
-    predict_video(filePath, prefix, cap)
+    try:
+        predict_video(filePath, prefix, cap)
+    except Exception as e:
+        print(f"Error processing video {file_name}: {e}")
+    finally:
+        cap.release()
     
 
 
@@ -697,7 +770,6 @@ def predict_video(filePath, fileName, cap, confidence=0.3, continuous_frame_thre
 
         # 对帧运行 YOLOv8 推理
         results = model(frame, conf=confidence)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
         
         result = results[0]
         boxes = result.boxes
@@ -744,7 +816,6 @@ def predict_video(filePath, fileName, cap, confidence=0.3, continuous_frame_thre
 
         # 对帧运行 YOLOv8 推理
         results = model(frame, conf=confidence, imgsz=736)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
         result = results[0]
         boxes = result.boxes
         class_ids = results[0].boxes.cls.cpu().numpy()
@@ -821,8 +892,6 @@ def predict_img(fileName) -> PicInfo:
     class_names = [model.names[int(cls)] for cls in class_ids]
     confs = results[0].boxes.conf.cpu().numpy().astype(float).tolist()
     
-    torch.cuda.empty_cache()  # Clear unused GPU memory
-
     # 获取带有标注的图片
     annotated_frame = results[0].plot()
 
@@ -852,12 +921,12 @@ def predict_img(fileName) -> PicInfo:
     return pic_info
 
 
-if __name__ == '__main__':
-    # 本地测试
-    folder_path = 'C:/Users/17756\Desktop/fsdownload/voice'
-    all_results = voice_recognize(folder_path, 1)
-    # 将result转换为JSON字符串
-    aiResult = json.dumps(all_results)
+# if __name__ == '__main__':
+#     # 本地测试
+#     folder_path = 'C:/Users/17756\Desktop/fsdownload/voice'
+#     all_results = voice_recognize(folder_path, 1)
+#     # 将result转换为JSON字符串
+#     aiResult = json.dumps(all_results)
 
-    print(aiResult)
-    print(all_results)
+#     print(aiResult)
+#     print(all_results)
