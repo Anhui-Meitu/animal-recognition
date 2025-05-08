@@ -1,73 +1,83 @@
+# Machine Learning Frameworks
 torch
-'git+https://github.com/facebookresearch/detectron2.git'
 torchvision
-ultralytics
+'git+https://github.com/facebookresearch/detectron2.git' # For Detectron2
+ultralytics # For YOLO models
+
+# Image Processing
 imagesize
 opencv-python
+pillow
+
+# Data Manipulation and Analysis
+pandas
+numpy  # Add numpy if missing
+scipy
+matplotlib
+seaborn
+
+# Web Framework and API
+fastapi
+fastapi-cli
+starlette
+uvicorn
+httpx
+httpcore
+websockets
+
+# Validation and Parsing
+pydantic
+pydantic-extra-types
+pydantic-settings
+email_validator
 annotated-types
+
+# Utilities
 anyio
 certifi
 charset-normalizer
 click
 colorama
-contourpy
-cycler
-dnspython
-email_validator
-exceptiongroup
-fastapi
-fastapi-cli
 filelock
-fonttools
 fsspec
-httpcore
-httptools
-httpx
-idna
-importlib_resources
-itsdangerous
-Jinja2
-kiwisolver
-markdown-it-py
-MarkupSafe
-matplotlib
-mdurl
-mpmath
-networkx
-orjson
-packaging
-pandas
-pillow
-psutil
-py-cpuinfo
-pydantic
-pydantic-extra-types
-pydantic-settings
-pydantic_core
-Pygments
-pyparsing
-python-dateutil
 python-dotenv
-python-multipart
-pytz
-PyYAML
-requests
-rich
-scipy
-seaborn
-shellingham
-six
-sniffio
-starlette
-sympy
-thop
 tqdm
-typer
 typing_extensions
 tzdata
 ujson
-urllib3
-uvicorn
 watchfiles
-websockets
+
+# Visualization
+rich
+Pygments
+markdown-it-py
+mdurl
+fonttools
+cycler
+kiwisolver
+contourpy
+zhplot # For Chinese characters support in matplotlib
+
+# Math and Scientific Computing
+sympy
+mpmath
+networkx
+py-cpuinfo
+
+# HTTP and Networking
+requests
+urllib3
+dnspython
+httptools
+sniffio
+idna
+
+# Miscellaneous
+itsdangerous
+MarkupSafe
+Jinja2
+shellingham
 zipp
+PyYAML
+python-multipart
+exceptiongroup

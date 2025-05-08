@@ -10,15 +10,7 @@ from os.path import join as pjoin
 import sys
 import argparse
 import matplotlib.pyplot as plt
-
-# if on linux system:    
-if sys.platform.startswith("win"):
-    # Set the font to a Chinese font
-    plt.rcParams["font.family"] = "SimHei"
-else: # linux or mac
-    # Set the font to a Chinese font
-    plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei"]
+import zhplot
 
 import torch
 from ultralytics import YOLO
