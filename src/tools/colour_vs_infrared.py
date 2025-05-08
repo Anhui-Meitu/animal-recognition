@@ -5,6 +5,7 @@ import cv2
 import os
 import sys
 from shutil import move
+import argparse
 
 def is_infrared(image_path):
     """
@@ -59,5 +60,29 @@ def split_images_into_folders(image_files):
                 print(f"Moved {image_file} to colour")
         except Exception as e:
             print(f"Error moving file {image_file}: {e}")
+        finally:
+            # close the image to prevent memory leak
+            cv2.destroyAllWindows()
             
 
+if __name__ == "__main__":
+    arg_parser = argparse.ArgumentParser(description="Separate colour and infrared images")
+    arg_parser.add_argument("--image_files_dir", type=str, required=True, help="Directory containing image files")
+    args = arg_parser.parse_args()
+    
+    if not os.path.exists(args.image_files_dir):
+        print(f"Image files directory {args.image_files_dir} does not exist.")
+        exit(1)
+        
+    os.chdir(args.image_files_dir)
+    
+    image_files = glob(os.path.join(args.image_files_dir, '*.jpg')) + glob(os.path.join(args.image_files_dir, '*.png'))
+    if not image_files:
+        print(f"No image files found in {args.image_files_dir}.")
+        exit(1)
+    if len(image_files) == 0:
+        print(f"No image files found in {args.image_files_dir}.")
+        exit(1)
+    
+    split_images_into_folders(image_files)
+    print("Finished separating images into colour and infrared folders.")
