@@ -6,6 +6,7 @@ import os
 import sys
 from shutil import move
 import argparse
+import pathlib
 
 def is_infrared(image_path):
     """
@@ -41,25 +42,35 @@ def is_infrared(image_path):
     return False
     
 
-def split_images_into_folders(image_files):
+def split_images_into_folders(image_files, image_files_dir):
     """
     split images into colour and infrared folders
     """
+    # name of the parent parent directory of the image directory
+    parent_dir = pathlib.Path(image_files_dir).parent.absolute()
+    
+    colour_dir = f'{parent_dir}-colour'
+    infrared_dir = f'{parent_dir}-infrared'
+    
     # Create directories for colour and infrared images
-    os.makedirs('colour', exist_ok=True)
-    os.makedirs('infrared', exist_ok=True)
+    os.makedirs(colour_dir, exist_ok=True)
+    os.makedirs(infrared_dir, exist_ok=True)
 
     # Loop through the image files and move them to the appropriate folder
     for image_file in image_files:
         try:
             if is_infrared(image_file):
-                move(image_file, os.path.join('infrared', image_file))
-                print(f"Moved {image_file} to infrared")
+                move(image_file, infrared_dir)
+                print(f"Moved {image_file} to {infrared_dir}")
             else:
-                move(image_file, os.path.join('colour', image_file))
-                print(f"Moved {image_file} to colour")
+                move(image_file, colour_dir)
+                print(f"Moved {image_file} to {colour_dir}")
         except Exception as e:
             print(f"Error moving file {image_file}: {e}")
+        except PermissionError:
+            print(f"Permission denied for file {image_file}. Please check your permissions.")
+        except FileNotFoundError:
+            print(f"File {image_file} not found. It may have been moved already.")
         finally:
             # close the image to prevent memory leak
             cv2.destroyAllWindows()
@@ -84,5 +95,5 @@ if __name__ == "__main__":
         print(f"No image files found in {args.image_files_dir}.")
         exit(1)
     
-    split_images_into_folders(image_files)
+    split_images_into_folders(image_files, args.image_files_dir)
     print("Finished separating images into colour and infrared folders.")
