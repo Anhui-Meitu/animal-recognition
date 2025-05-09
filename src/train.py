@@ -38,7 +38,9 @@ def train_yolo(
     """
     save_dir: str = pjoin(
         EXPERIMENT_DIR,
-        os.path.basename(config_fpath).split(".")[0],
+        os.path.basename(config_fpath).split(".")[0] 
+            if not balanced_dataloader 
+            else "balanced_" + os.path.basename(config_fpath).split(".")[0],
         os.path.basename(model).split(".")[0],
     )
     
