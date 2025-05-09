@@ -31,18 +31,35 @@ def find_files_after_date(directory, date):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find files created after a specific date.')
     parser.add_argument('-d', '--directory', type=str, required=True, help='Directory to search in')
-    parser.add_argument('-t', '--date', type=str, required=True, help='Date in YYYY-MM-DD format')
+    parser.add_argument('-t', '--date', type=str, required=False, help='Date in YYYY-MM-DD format')
     args = parser.parse_args()
+    
+    if not args.date:
+        # If no date is provided, try to find the last date the script was run
+        if not os.path.exists('last_run_date.json'):
+            print("No date provided and last_run_date.json not found. Exiting.")
+            exit(1)
+        with open('last_run_date.json', 'r') as f:
+            last_run_date = f.read()
+        last_run_date = re.search(r'\d{4}-\d{2}-\d{2}', last_run_date).group(0)
+        # use the day before the last run date
+        last_run_date = (
+            datetime.datetime.strptime(last_run_date, '%Y-%m-%d') - 
+            datetime.timedelta(days=1)
+        ).strftime('%Y-%m-%d')
+        print(f"No date provided. Using last run date: {last_run_date}")
+        args.date = last_run_date
 
     # Convert the date string to a datetime object
     date = datetime.datetime.strptime(args.date, '%Y-%m-%d')
     
     # save to output dir
-    os.mkdir('output')
-    os.mkdir('output/videos')
-    os.mkdir('output/images')
+    os.makedirs('output', exist_ok=True)
+    os.makedirs('output/videos', exist_ok=True)
+    os.makedirs('output/images', exist_ok=True)
     
     for dir_name, videos, images in tqdm(find_files_after_date(args.directory, date), desc="Finding files"):
+        print(dir_name)
         # Copy video files
         for video in videos:
             dest = os.path.join('output/videos', os.path.basename(video))
@@ -53,5 +70,9 @@ if __name__ == "__main__":
             dest = os.path.join('output/images', os.path.basename(image))
             copyfile(image, dest)
     print("Files copied to output directory.")
+    
+    # save current date to JSON file
+    with open('last_run_date.json', 'w') as f:
+        f.write(f'{{"last_run_date": "{datetime.datetime.now().strftime("%Y-%m-%d")}"}}')
     
     

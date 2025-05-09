@@ -67,7 +67,7 @@ def split_images_into_folders(image_files):
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Separate colour and infrared images")
-    arg_parser.add_argument("--image_files_dir", type=str, required=True, help="Directory containing image files")
+    arg_parser.add_argument("-d", "--image_files_dir", type=str, required=True, help="Directory containing image files")
     args = arg_parser.parse_args()
     
     if not os.path.exists(args.image_files_dir):
