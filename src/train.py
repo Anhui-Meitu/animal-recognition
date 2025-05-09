@@ -94,6 +94,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Resume training from the last checkmapoint.",
     )
+    parser.add_argument(
+        "-b",
+        "--balanced",
+        action="store_true",
+        help="Use a data loader that handles class imbalance.",
+    )
     args = parser.parse_args()
     
 
@@ -122,4 +128,8 @@ if __name__ == "__main__":
         sys.exit(1)
     if "yolo" in model_path:
         print("Training YOLO model...")
-        train_yolo(config_fpath=config_path, model=model_path)
+        train_yolo(
+            config_fpath=config_path, 
+            model=model_path, 
+            balanced_dataloader=args.balanced
+        )
