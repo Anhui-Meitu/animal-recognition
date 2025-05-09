@@ -15,16 +15,37 @@ import zhplot
 import torch
 from ultralytics import YOLO
 import detectron2
+import ultralytics.data.build as build
 
 from constants import MODEL_DIR, DATA_DIR, EXPERIMENT_DIR
+from yolo_balanced_dataloader import YOLOWeightedDataset
 
 
-def train_yolo(config_fpath: str, model: str, patience: int = 20):
+def train_yolo(
+        config_fpath: str, 
+        model: str, 
+        patience: int = 20,
+        balanced_dataloader: bool = False,
+    ):
+    """Train a YOLO model with the specified configuration file and model path.
+
+    Args:
+        config_fpath (str): Path to the configuration yaml file.
+        model (str): Path to the model pt file.
+        patience (int, optional): Number of epochs to run without improvement. Defaults to 20.
+        balanced_dataloader (bool, optional): Use a data loader that handles class imbalance.
+        Defaults to False.
+    """
     save_dir: str = pjoin(
         EXPERIMENT_DIR,
         os.path.basename(config_fpath).split(".")[0],
         os.path.basename(model).split(".")[0],
     )
+    
+    if balanced_dataloader:
+        # monkey patch the YOLODataset class
+        build.YOLODataset = YOLOWeightedDataset
+    
     model = YOLO(model)  # Load a pretrained YOLOv8 model
     model.train(
         data=config_fpath,
@@ -32,7 +53,6 @@ def train_yolo(config_fpath: str, model: str, patience: int = 20):
         imgsz=736,
         batch=12,
         device=0,
-        
         patience=patience,
         project=save_dir,
     )
