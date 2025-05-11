@@ -52,15 +52,15 @@ def train_yolo(
     model.train(
         data=config_fpath,
         epochs=200,
-        imgsz=736,
-        batch=12,
+        imgsz=1024,
+        batch=8,
         device=0,
         patience=patience,
         project=save_dir,
     )
 
 
-def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
+def train_yolo_resume(config_fpath: str, model: str, patience: int = 20):
     """
     Train a YOLO model with the specified configuration file and model path.
     Args:
@@ -72,11 +72,11 @@ def train_yolo_resume(config_fpath: str, model: str, patience: int = 10):
     model.train(
         data=config_fpath,
         epochs=200,
-        imgsz=736,
+        imgsz=1024,
         batch=12,
         device=0,
         resume=True,
-        # patience=patience,
+        patience=patience,
     )
 
 
