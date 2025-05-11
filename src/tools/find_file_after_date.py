@@ -6,6 +6,7 @@ import argparse
 from shutil import copyfile
 from tqdm import tqdm
 from glob import glob
+import pathlib
 import re
 
 def find_files_after_date(directory, date):
@@ -21,7 +22,7 @@ def find_files_after_date(directory, date):
                 dir_date = datetime.datetime.strptime(dir_date_str, '%Y%m%d')
                 
                 # Compare the dates
-                if dir_date > date:
+                if dir_date > date and dir_date <= datetime.datetime.now().date():
                     # Check for video and image files in the directory
                     videos = glob(os.path.join(root, dir_name, '*.mp4'))
                     images = glob(os.path.join(root, dir_name, '*.jpg'))
@@ -31,27 +32,54 @@ def find_files_after_date(directory, date):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find files created after a specific date.')
     parser.add_argument('-d', '--directory', type=str, required=True, help='Directory to search in')
-    parser.add_argument('-t', '--date', type=str, required=True, help='Date in YYYY-MM-DD format')
+    parser.add_argument('-t', '--date', type=str, required=False, help='Date in YYYY-MM-DD format')
     args = parser.parse_args()
+    
+    if not args.date:
+        # If no date is provided, try to find the last date the script was run
+        if not os.path.exists('last_run_date.json'):
+            print("No date provided and last_run_date.json not found. Exiting.")
+            exit(1)
+        with open('last_run_date.json', 'r') as f:
+            last_run_date = f.read()
+        last_run_date = re.search(r'\d{4}-\d{2}-\d{2}', last_run_date).group(0)
+        # use the day before the last run date so that the files created on the last run date are included
+        last_run_date = (
+            datetime.datetime.strptime(last_run_date, '%Y-%m-%d') - 
+            datetime.timedelta(days=1)
+        ).strftime('%Y-%m-%d')
+        print(f"No date provided. Using last run date: {last_run_date}")
+        args.date = last_run_date
 
     # Convert the date string to a datetime object
     date = datetime.datetime.strptime(args.date, '%Y-%m-%d')
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
     
     # save to output dir
-    os.mkdir('output')
-    os.mkdir('output/videos')
-    os.mkdir('output/images')
+    output_dir = f'/media/meitu001/Data/share/{date.strftime("%Y%m%d")}-{today}'
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, 'videos'), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, 'images'), exist_ok=True)
+    os.chdir(output_dir)
+    print(f"Output directory: {output_dir}")
     
     for dir_name, videos, images in tqdm(find_files_after_date(args.directory, date), desc="Finding files"):
+        print(dir_name)
         # Copy video files
         for video in videos:
-            dest = os.path.join('output/videos', os.path.basename(video))
+            dest = os.path.join('videos', os.path.basename(video))
             copyfile(video, dest)
         
         # Copy image files
         for image in images:
-            dest = os.path.join('output/images', os.path.basename(image))
+            dest = os.path.join('images', os.path.basename(image))
             copyfile(image, dest)
     print("Files copied to output directory.")
+    
+    os.chdir(pathlib.Path(args.directory).parent.absolute())
+    
+    # save current date to JSON file
+    with open('last_run_date.json', 'w') as f:
+        f.write(f'{{"last_run_date": "{datetime.datetime.now().strftime("%Y-%m-%d")}"}}')
     
     
