@@ -7,6 +7,7 @@ from glob import glob
 from PIL import Image
 from tqdm import tqdm
 import cv2
+import argparse
 
 def convert_images_to_jpg(input_dir, output_dir):
     """
@@ -43,14 +44,22 @@ def convert_images_to_jpg(input_dir, output_dir):
         # cv2.imwrite(output_file_cv, img_cv)
 
 if __name__ == "__main__":
-    # Check if the input directory is passed as an argument
-    if len(sys.argv) < 3:
-        print("Usage: python convert_images.py <input_directory> <output_directory>")
-        sys.exit(1)
-
-    # Get the input and output directories from the command line arguments
-    input_directory = sys.argv[1]
-    output_directory = sys.argv[2]
+    parser = argparse.ArgumentParser(
+        description="Convert images into uniform jpg formats"
+    )
+    
+    parser.add_argument(
+        "-d", "--input_dir", type=str, required=True,
+        help="Path to the input directory"
+    )
+    parser.add_argument(
+        "-o", "--output_dir", type=str, required=False,
+        help="Path to the output directory, optional, use input directory if not provided"
+    )
+    args = parser.parse_args()
+    
+    input_directory = args.d
+    output_directory = args.o if args.o else input_directory
 
     # Convert images to JPG format
     convert_images_to_jpg(input_directory, output_directory)
