@@ -101,62 +101,6 @@ async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: s
         raise HTTPException(status_code=500, detail=str(err))
 
 
-def voice_recognize(folder_path, task_id):
-    results = []
-    # 构建 json 数据
-    json_data = {"output_threshold": 0.05, "num_results": 1}
-    # 将 json 数据转换为符合规范的 JSON 字符串
-    json_str = json.dumps(json_data)
-    # 遍历文件夹下的所有文件
-    for root, dirs, files in os.walk(folder_path):
-        for file_name in files:
-            file_path = os.path.join(root, file_name)
-            # 读取文件
-            with open(file_path, "rb") as file:
-                # 构建请求参数
-                files = {"audio": file}
-                data = {"meta": json_str}
-                try:
-                    # 发送 POST 请求
-                    response = requests.post(
-                        "http://192.16.16.182:8080/analyze", files=files, data=data
-                    )
-
-                    # 处理响应
-                    if response.status_code == 200:
-                        response_body = response.text
-                        response_json = json.loads(response_body)
-                        result = {
-                            "task_id": task_id,
-                            "file_name": file_name,
-                            "response_body": response_json,
-                        }
-                        results.append(result)
-                    else:
-                        result = {
-                            "task_id": task_id,
-                            "file_name": file_name,
-                            "error": f"请求失败，状态码: {response.status_code}",
-                        }
-                        results.append(result)
-                except requests.RequestException as e:
-                    result = {
-                        "task_id": task_id,
-                        "file_name": file_name,
-                        "error": f"请求发生错误: {e}",
-                    }
-                    results.append(result)
-                except Exception as e:
-                    result = {
-                        "task_id": task_id,
-                        "file_name": file_name,
-                        "error": f"发生未知错误: {e}",
-                    }
-                    results.append(result)
-
-    return results
-
-
 @app.get("/voiceDirRecognize")
 async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
     print(dirPath)
@@ -197,12 +141,17 @@ async def videoRecognize(videoPath: str):
         cap = cv2.VideoCapture(videoPath)
     predict_video(filePath, prefix, cap)
     
+    torch.cuda.empty_cache()  # Clear unused GPU memory
+    
     return {"message": videoPath}
 
 
 @app.get("/streamRecognize")
 async def streamRecognize(streamPath: str):
     stream_rec(streamPath)
+    
+    torch.cuda.empty_cache()  # Clear unused GPU memory
+    
     return {"message": streamPath}
 
 
@@ -404,7 +353,6 @@ def video_count(filePath):
             break
 
         results = model1(frame)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
         boxes = results[0].boxes
 
         new_track_history = {}
@@ -543,119 +491,6 @@ def stream_rec(streamPath):
     cv2.destroyAllWindows()
 
 
-def predict_dir(directory, confidence: float=0.3, imgsz: int=736) -> List[PicInfo]:
-    """
-    处理目录下的图片和视频
-    1. 遍历目录下的所有文件
-    2. 对于每个文件，判断其类型（图片或视频）
-    3. 对于图片，进行预测并保存带有标注的图片
-    4. 对于视频，进行预测并保存带有标注的视频
-    5. 返回所有处理结果的列表
-    Args:
-        directory (str): 目录路径
-        confidence (float, optional): 置信度阈值. Defaults to 0.3.
-        imgsz (int, optional): 图片大小. Defaults to 736.
-    Returns:
-        List[PicInfo]: 预测结果列表
-    """
-    list_info = []
-
-    if directory:
-        files = os.listdir(directory)
-        root = directory
-        for file in files:
-            if not os.path.isfile(os.path.join(root, file)):
-                continue
-
-            # 得到文件后缀名  需要根据情况进行修改
-            suffix = file.split(".")[-1]
-            prefix = ".".join(file.split(".")[:-1])
-
-            # images
-            if suffix.lower() in ["png", "jpg", "jpeg"]:
-                filePath = os.path.join(root, file.replace("\\", "/"))
-
-                im2 = cv2.imread(filePath)
-                # 进行预测
-                results = model.predict(source=im2, conf=confidence, imagsz=imgsz)
-
-                boxes = results[0].boxes.xyxy.tolist()
-                class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-                class_names = [model.names[int(cls)] for cls in class_ids]
-                confs = results[0].boxes.conf.cpu().numpy().astype(float).tolist()
-
-                torch.cuda.empty_cache()  # Clear unused GPU memory
-
-                # 获取带有标注的图片
-                annotated_frame = results[0].plot()
-
-                # 根据是否有预测结果保存图片
-                if len(results[0].boxes) > 0:
-                    output_folder = os.path.join(directory, "label")
-                else:
-                    output_folder = os.path.join(directory, "no_label")
-
-                # 判断文件夹是否存在 不存在则创建
-                if not os.path.exists(output_folder):
-                    os.makedirs(output_folder)
-
-                # 保存带有标注的图片
-                output_image_file = os.path.join(output_folder, file)
-                cv2.imwrite(output_image_file, annotated_frame)
-
-                yolo_info = YoloInfo(classNames=class_names, boxes=boxes, confs=confs)
-                pic_info = PicInfo(
-                    picName=file,
-                    oriPicPath=filePath,
-                    firstPic="",
-                    recPicPath=output_image_file,
-                    yoloInfo=yolo_info,
-                )
-                list_info.append(pic_info)
-
-            elif suffix.lower() in ["mp4", "avi", "wmv", "mpeg"]:
-                filePath = os.path.join(root, file.replace("\\", "/"))
-
-                # 预测视频
-                try:
-                    cap = cv2.VideoCapture(filePath)
-                    class_set = predict_video(
-                        directory, prefix, cap, 
-                        confidence=confidence, 
-                        continuous_frame_threshold=1, 
-                        imgsz=imgsz,
-                    )
-                except Exception as e:
-                    print(f"Error processing video {filePath}: {e}")
-                    continue
-                finally:
-                    cap.release()
-
-                file = file.replace(suffix, "mp4")
-
-                # 构造路径
-                rec_pic_path = os.path.join(directory, "label", file)
-
-                if not class_set:
-                    recPicPath = ""
-                else:
-                    recPicPath = rec_pic_path
-
-                yolo_info = YoloInfo(
-                    classNames=[] if not class_set else [class_set], boxes=[], confs=[]
-                )
-                pic_info = PicInfo(
-                    picName=file,
-                    oriPicPath=filePath,
-                    firstPic=os.path.join(directory, "cover", prefix + ".jpg"),
-                    recPicPath=recPicPath,
-                    yoloInfo=yolo_info,
-                )
-                list_info.append(pic_info)
-
-    return list_info
-
-
 def call_java_interface_for_error_handling(taskId):
     aiqxTaskAddVO = {"id": taskId, "status": 3}
 
@@ -711,6 +546,87 @@ def call_java_interface_update_path(fileId, updatePath):
 
     # 返回响应对象（或根据需要处理它）
     return response.json()  # 或者只是return response如果你不需要JSON内容
+
+
+def predict_dir(directory, confidence: float=0.3, imgsz: int=736) -> List[PicInfo]:
+    """
+    处理目录下的图片和视频
+    1. 遍历目录下的所有文件
+    2. 对于每个文件，判断其类型（图片或视频）
+    3. 对于图片，进行预测并保存带有标注的图片
+    4. 对于视频，进行预测并保存带有标注的视频
+    5. 返回所有处理结果的列表
+    Args:
+        directory (str): 目录路径
+        confidence (float, optional): 置信度阈值. Defaults to 0.3.
+        imgsz (int, optional): 图片大小. Defaults to 736.
+    Returns:
+        List[PicInfo]: 预测结果列表
+    """
+    list_info = []
+
+    if directory:
+        files = os.listdir(directory)
+        root = directory
+        for file in files:
+            if not os.path.isfile(os.path.join(root, file)):
+                continue
+
+            # 得到文件后缀名  需要根据情况进行修改
+            suffix = file.split(".")[-1]
+            prefix = ".".join(file.split(".")[:-1])
+
+            # images
+            if suffix.lower() in ["png", "jpg", "jpeg"]:
+                filePath = os.path.join(root, file.replace("\\", "/"))
+
+                pic_info = predict_img(
+                    filePath, confidence=confidence, imgsz=imgsz
+                )
+                
+                list_info.append(pic_info)
+            # videos
+            elif suffix.lower() in ["mp4", "avi", "wmv", "mpeg"]:
+                filePath = os.path.join(root, file.replace("\\", "/"))
+
+                # 预测视频
+                try:
+                    cap = cv2.VideoCapture(filePath)
+                    class_set = predict_video(
+                        directory, prefix, cap, 
+                        confidence=confidence, 
+                        continuous_frame_threshold=1, 
+                        imgsz=imgsz,
+                    )
+                except Exception as e:
+                    print(f"Error processing video {filePath}: {e}")
+                    continue
+                finally:
+                    cap.release()
+
+                file = file.replace(suffix, "mp4")
+
+                # 构造路径
+                rec_pic_path = os.path.join(directory, "label", file)
+
+                if not class_set:
+                    recPicPath = ""
+                else:
+                    recPicPath = rec_pic_path
+
+                yolo_info = YoloInfo(
+                    classNames=[] if not class_set else [class_set], boxes=[], confs=[]
+                )
+                pic_info = PicInfo(
+                    picName=file,
+                    oriPicPath=filePath,
+                    firstPic=os.path.join(directory, "cover", prefix + ".jpg"),
+                    recPicPath=recPicPath,
+                    yoloInfo=yolo_info,
+                )
+                list_info.append(pic_info)
+
+    return list_info
 
 
 def predict_video(
@@ -886,6 +802,19 @@ def predict_video(
 
 
 def predict_img(fileName, confidence: float=0.3, imgsz: int=736) -> PicInfo:
+    """
+    处理单张图片
+    1. 对图片进行YOLOv8推理
+    2. 根据检测结果绘制边界框
+    3. 保存带有标注的图片
+    4. 返回检测到的类别
+    Args:
+        fileName (str): 图片文件路径
+        confidence (float, optional): 置信度阈值. Defaults to 0.3.
+        imgsz (int, optional): 图片大小. Defaults to 736.
+    Returns:
+        PicInfo: 预测结果对象
+    """
     # 分割路径和文件名
     directory, file_name = os.path.split(fileName)
 
@@ -924,6 +853,62 @@ def predict_img(fileName, confidence: float=0.3, imgsz: int=736) -> PicInfo:
     )
 
     return pic_info
+
+
+def voice_recognize(folder_path, task_id):
+    results = []
+    # 构建 json 数据
+    json_data = {"output_threshold": 0.05, "num_results": 1}
+    # 将 json 数据转换为符合规范的 JSON 字符串
+    json_str = json.dumps(json_data)
+    # 遍历文件夹下的所有文件
+    for root, dirs, files in os.walk(folder_path):
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            # 读取文件
+            with open(file_path, "rb") as file:
+                # 构建请求参数
+                files = {"audio": file}
+                data = {"meta": json_str}
+                try:
+                    # 发送 POST 请求
+                    response = requests.post(
+                        "http://192.16.16.182:8080/analyze", files=files, data=data
+                    )
+
+                    # 处理响应
+                    if response.status_code == 200:
+                        response_body = response.text
+                        response_json = json.loads(response_body)
+                        result = {
+                            "task_id": task_id,
+                            "file_name": file_name,
+                            "response_body": response_json,
+                        }
+                        results.append(result)
+                    else:
+                        result = {
+                            "task_id": task_id,
+                            "file_name": file_name,
+                            "error": f"请求失败，状态码: {response.status_code}",
+                        }
+                        results.append(result)
+                except requests.RequestException as e:
+                    result = {
+                        "task_id": task_id,
+                        "file_name": file_name,
+                        "error": f"请求发生错误: {e}",
+                    }
+                    results.append(result)
+                except Exception as e:
+                    result = {
+                        "task_id": task_id,
+                        "file_name": file_name,
+                        "error": f"发生未知错误: {e}",
+                    }
+                    results.append(result)
+
+    return results
 
 
 if __name__ == "__main__":
