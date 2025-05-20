@@ -55,6 +55,21 @@ async def fileRecognize(filePath: str):
 
 @app.get("/dirRecognize")
 async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: str):
+    """  处理目录下的图片和视频
+
+    Args:
+        dirPath (str): absolute path to the directory in the server file system
+        requestUrl (str): Java接口的URL
+        taskId (str): 任务Id
+        modelName (str): 模型名称
+
+    Raises:
+        HTTPException: 
+        HTTPException: _description_
+
+    Returns:
+        _type_: 
+    """
     # 检查 modelName 是否不为空
     global model  # 声明使用全局变量
     if modelName:
@@ -62,10 +77,10 @@ async def dir_recognize(dirPath: str, requestUrl: str, taskId: str, modelName: s
     else:
         model = YOLO("tianma.pt")  # 保持默认模型
 
-    list1 = input_line5(dirPath)
     try:
+        list1 = predict_dir(dirPath)
         # 将list1转换为JSON字符串
-        aiResult = json.dumps([item.dict() for item in list1])
+        aiResult = json.dumps([item.model_dump() for item in list1])
 
         print(aiResult)
 
@@ -171,7 +186,17 @@ async def voice_dir_recognize(dirPath: str, requestUrl: str, taskId: str):
 
 @app.get("/videoRecognize")
 async def videoRecognize(videoPath: str):
-    input_line2(videoPath)
+    suffix = videoPath.split("/")[-1][videoPath.split("/")[-1].index(".") + 1 :]
+    prefix = videoPath.split("/")[-1][: videoPath.split("/")[-1].index(".")]
+
+    filePath = os.path.dirname(videoPath)
+
+    if videoPath == "":
+        pass
+    elif suffix.lower() in ["mp4", "avi", "wmv", "mpeg"]:
+        cap = cv2.VideoCapture(videoPath)
+    predict_video(filePath, prefix, cap)
+    
     return {"message": videoPath}
 
 
@@ -344,7 +369,6 @@ def img_count(filePath):
     im2 = cv2.imread(filePath)
     # 进行预测
     results = model1.predict(source=im2, conf=0.3)
-    torch.cuda.empty_cache()  # Clear unused GPU memory
     class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
     count_num = class_ids.size()
     return count_num
@@ -519,11 +543,24 @@ def stream_rec(streamPath):
     cv2.destroyAllWindows()
 
 
-def input_line5(directory) -> List[PicInfo]:
+def predict_dir(directory, confidence: float=0.3, imgsz: int=736) -> List[PicInfo]:
+    """
+    处理目录下的图片和视频
+    1. 遍历目录下的所有文件
+    2. 对于每个文件，判断其类型（图片或视频）
+    3. 对于图片，进行预测并保存带有标注的图片
+    4. 对于视频，进行预测并保存带有标注的视频
+    5. 返回所有处理结果的列表
+    Args:
+        directory (str): 目录路径
+        confidence (float, optional): 置信度阈值. Defaults to 0.3.
+        imgsz (int, optional): 图片大小. Defaults to 736.
+    Returns:
+        List[PicInfo]: 预测结果列表
+    """
     list_info = []
 
     if directory:
-        # for root, dirs, files in os.walk(directory):
         files = os.listdir(directory)
         root = directory
         for file in files:
@@ -531,17 +568,16 @@ def input_line5(directory) -> List[PicInfo]:
                 continue
 
             # 得到文件后缀名  需要根据情况进行修改
-            # suffix = file.split("/")[-1][file.split("/")[-1].index(".") + 1:]
-            # prefix = file.split("/")[-1][:file.split("/")[-1].index(".")]
             suffix = file.split(".")[-1]
             prefix = ".".join(file.split(".")[:-1])
 
+            # images
             if suffix.lower() in ["png", "jpg", "jpeg"]:
                 filePath = os.path.join(root, file.replace("\\", "/"))
 
                 im2 = cv2.imread(filePath)
                 # 进行预测
-                results = model.predict(source=im2, conf=0.3)
+                results = model.predict(source=im2, conf=confidence, imagsz=imgsz)
 
                 boxes = results[0].boxes.xyxy.tolist()
                 class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
@@ -581,12 +617,20 @@ def input_line5(directory) -> List[PicInfo]:
                 filePath = os.path.join(root, file.replace("\\", "/"))
 
                 # 预测视频
-                cap = cv2.VideoCapture(filePath)
-                class_set = predict_video(
-                    directory, prefix, cap, confidence=0.6, continuous_frame_threshold=1
-                )
+                try:
+                    cap = cv2.VideoCapture(filePath)
+                    class_set = predict_video(
+                        directory, prefix, cap, 
+                        confidence=confidence, 
+                        continuous_frame_threshold=1, 
+                        imgsz=imgsz,
+                    )
+                except Exception as e:
+                    print(f"Error processing video {filePath}: {e}")
+                    continue
+                finally:
+                    cap.release()
 
-                # TODO: conversion needed? 需不需要转换格式
                 file = file.replace(suffix, "mp4")
 
                 # 构造路径
@@ -608,8 +652,6 @@ def input_line5(directory) -> List[PicInfo]:
                     yoloInfo=yolo_info,
                 )
                 list_info.append(pic_info)
-
-                cap.release()  # ensure resources are freed
 
     return list_info
 
@@ -671,23 +713,26 @@ def call_java_interface_update_path(fileId, updatePath):
     return response.json()  # 或者只是return response如果你不需要JSON内容
 
 
-def input_line2(file_name):
-    # 得到文件后缀名  需要根据情况进行修改
-    suffix = file_name.split("/")[-1][file_name.split("/")[-1].index(".") + 1 :]
-    prefix = file_name.split("/")[-1][: file_name.split("/")[-1].index(".")]
-
-    filePath = os.path.dirname(file_name)
-
-    if file_name == "":
-        pass
-    elif suffix.lower() in ["mp4", "avi", "wmv", "mpeg"]:
-        cap = cv2.VideoCapture(file_name)
-    predict_video(filePath, prefix, cap)
-
-
 def predict_video(
-    filePath, fileName, cap, confidence=0.3, continuous_frame_threshold=1
-):
+        filePath, fileName, cap, confidence=0.3, continuous_frame_threshold=1,
+        imgsz: int = 736
+    ):
+    """
+    处理视频文件
+    1. 对视频进行YOLOv8推理
+    2. 根据检测结果绘制边界框
+    3. 保存带有标注的视频
+    4. 返回检测到的类别
+    Args:
+        filePath (str): 视频文件路径
+        fileName (str): 视频文件名
+        cap (cv2.VideoCapture): 视频捕获对象
+        confidence (float, optional): 置信度阈值. Defaults to 0.3.
+        continuous_frame_threshold (int, optional): 连续检测到目标的帧数阈值. Defaults to 1.
+        imgsz (int, optional): 图片大小. Defaults to 736.
+    Returns:
+        str: 检测到的类别
+    """
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -713,11 +758,14 @@ def predict_video(
     continuous_frame = 0
     no_continuous_frame = 0
     skip_second_pass = True
+    
+    # 用于记录检测到的边界框信息
+    detections = []
 
-    # 第一遍遍历：记录类别出现次数
+    # 第一遍遍历：记录检测到的目标
     while cap.isOpened():
         success, frame = cap.read()
-        if not success:
+        if not success: # 读取失败或视频结束
             break
 
         # 如果第一帧没有存储
@@ -726,14 +774,15 @@ def predict_video(
             first_frame_saved = True
 
         # 对帧运行 YOLOv8 推理
-        results = model(frame, conf=confidence)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
+        results = model(frame, conf=confidence, imgsz=imgsz)
 
         result = results[0]
         boxes = result.boxes
         class_ids = boxes.cls.cpu().numpy()  # 提取类别ID
-
-        if len(class_ids) > 0:
+        
+        detections.append(boxes)  # 保存边界框信息
+        
+        if len(class_ids) > 0: # 检测到目标
             continuous_frame += 1
             if continuous_frame >= continuous_frame_threshold:
                 skip_second_pass = False
@@ -769,25 +818,14 @@ def predict_video(
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     last_boxes_data = None
+    
     # 第二遍遍历：根据检测结果绘制并处理未检测到目标的帧
-    while cap.isOpened():
-        success, frame = cap.read()
-        if not success:
-            break
-
-        annotated_frame = None
-
-        # 对帧运行 YOLOv8 推理
-        results = model(frame, conf=confidence, imgsz=736)
-        torch.cuda.empty_cache()  # Clear unused GPU memory
-        result = results[0]
-        boxes = result.boxes
-        class_ids = results[0].boxes.cls.cpu().numpy()
-
+    for boxes in detections:
+        class_ids = boxes.cls.cpu().numpy()  # 提取类别ID
         # 保存当前帧的边界框信息
         last_boxes_data = (boxes.xyxy, boxes.conf, class_ids)
 
-        if boxes.shape[0] > 0:
+        if boxes.shape[0] > 0: # 检测到目标
 
             no_continuous_frame = 0
 
@@ -809,7 +847,7 @@ def predict_video(
                 result.boxes = new_boxes
                 annotated_frame = result.plot()
 
-        else:
+        else: # 未检测到目标
             no_continuous_frame += 1
             if no_continuous_frame < 15:
                 if last_boxes_data is not None:
@@ -840,7 +878,6 @@ def predict_video(
                 print("FFmpeg进程不存在")
 
     # 释放资源
-    cap.release()
     if process:
         process.stdin.close()
         process.wait()
@@ -848,19 +885,17 @@ def predict_video(
     return model.names[int(most_common_class)]
 
 
-def predict_img(fileName) -> PicInfo:
+def predict_img(fileName, confidence: float=0.3, imgsz: int=736) -> PicInfo:
     # 分割路径和文件名
     directory, file_name = os.path.split(fileName)
 
     im2 = cv2.imread(fileName)
-    results = model.predict(source=im2, conf=0.3, imagsz=736)  # 将预测保存为标签
+    results = model.predict(source=im2, conf=confidence, imagsz=imgsz)  # 将预测保存为标签
 
     boxes = results[0].boxes.xyxy.tolist()
     class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
     class_names = [model.names[int(cls)] for cls in class_ids]
     confs = results[0].boxes.conf.cpu().numpy().astype(float).tolist()
-
-    torch.cuda.empty_cache()  # Clear unused GPU memory
 
     # 获取带有标注的图片
     annotated_frame = results[0].plot()
